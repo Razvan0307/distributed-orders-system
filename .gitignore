@@ -1,0 +1,13 @@
+# Medii virtuale
+venv/
+env/
+
+# Fisiere cache de Python
+__pycache__/
+*.pyc
+
+# Fisiere specifice sistemului de operare (daca lucrezi si de pe ecosistemul Apple mai tarziu)
+.DS_Store
+
+# Fisiere IDE
+.vscode/

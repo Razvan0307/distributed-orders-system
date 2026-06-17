@@ -1,0 +1,18 @@
+# ConfigMap care injecteaza URL-urile interne ale microserviciilor
+# in toate podurile care au nevoie sa comunice cu ele.
+#
+# In Kubernetes, fiecare Service primeste automat o intrare DNS interna
+# de forma "<nume-service>.<namespace>.svc.cluster.local" (sau pur si
+# simplu "<nume-service>" daca apelantul e in acelasi namespace).
+# Astfel nu este nevoie sa hardcodam adrese IP, care s-ar putea schimba
+# de fiecare data cand un Pod este recreat.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: service-urls
+  namespace: distributed-orders
+data:
+  ORDER_SERVICE_URL: "http://order-service:5000"
+  PRODUCT_SERVICE_URL: "http://product-service:5000"
+  NOTIFICATION_SERVICE_URL: "http://notification-service:5000"
