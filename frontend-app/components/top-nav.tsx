@@ -1,37 +1,49 @@
 "use client";
 
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Boxes, RefreshCw, ShieldCheck, Store } from "lucide-react";
-import type { Notification } from "@/lib/types";
+import { Boxes, RefreshCw, ShieldCheck, Store } from "lucide-react"; // <-- fără Trash2
 import { Button } from "@/components/ui/button";
 import { NotificationsBell } from "@/components/notifications-bell";
 import { cn } from "@/lib/utils";
+import { useNotifications } from "@/components/ui/notifications-context";
 
 type TopNavProps = {
   mode: "buyer" | "admin";
-  onRefresh: () => void;
-  isRefreshing: boolean;
-  notifications: Notification[];
-  unreadCount: number;
-  notificationsOpen: boolean;
-  onNotificationsOpenChange: (open: boolean) => void;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
 };
 
 export function TopNav({
   mode,
-  onRefresh,
-  isRefreshing,
-  notifications,
-  unreadCount,
-  notificationsOpen,
-  onNotificationsOpenChange,
+  onRefresh = () => {},
+  isRefreshing = false,
 }: TopNavProps) {
   const isAdmin = mode === "admin";
   const router = useRouter();
+  const { notifications, markAllRead, clearNotifications } = useNotifications();
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+
+  // Filtrare notificări
+  const filteredNotifications = useMemo(() => {
+    if (isAdmin) return notifications;
+    return notifications.filter((n) => n.event === "ORDER_CREATED");
+  }, [notifications, isAdmin]);
+
+  // Stare locală pentru numărul de necitite filtrat (calculat doar pe client)
+  const [filteredUnreadCount, setFilteredUnreadCount] = useState(0);
+
+  useEffect(() => {
+    const lastRead = localStorage.getItem("lastReadNotificationId");
+    const lastId = lastRead ? parseInt(lastRead) : 0;
+    const count = filteredNotifications.filter((n) => n.id > lastId).length;
+    setFilteredUnreadCount(count);
+  }, [filteredNotifications]);
 
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-card/70 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 md:px-6">
+        {/* Logo */}
         <div className="flex items-center gap-3">
           <div
             className={cn(
@@ -59,6 +71,7 @@ export function TopNav({
           </div>
         </div>
 
+        {/* Acțiuni */}
         <div className="flex items-center gap-2 sm:gap-3">
           <Button
             onClick={() => router.push(isAdmin ? "/" : "/admin")}
@@ -103,10 +116,14 @@ export function TopNav({
           </Button>
 
           <NotificationsBell
-            notifications={notifications}
-            unreadCount={unreadCount}
+            notifications={filteredNotifications}
+            unreadCount={filteredUnreadCount}
             open={notificationsOpen}
-            onOpenChange={onNotificationsOpenChange}
+            onOpenChange={(open) => {
+              setNotificationsOpen(open);
+              if (open) markAllRead();
+            }}
+            onClear={clearNotifications}
           />
         </div>
       </div>

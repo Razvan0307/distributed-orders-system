@@ -6,6 +6,15 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-}
+  async rewrites() {
+    return [
+      {
+        source: "/api/:path*",
+        // Portul tunelului Minikube (schimbă-l dacă se modifică)
+        destination: "http://localhost:65129/api/:path*",
+      },
+    ];
+  },
+};
 
-export default nextConfig
+export default nextConfig;

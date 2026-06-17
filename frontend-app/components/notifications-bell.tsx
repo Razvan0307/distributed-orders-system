@@ -1,13 +1,27 @@
-"use client"
+"use client";
 
-import { Bell, CheckCircle2, AlertTriangle, XCircle, RefreshCcw } from "lucide-react"
-import type { Notification, SystemEvent } from "@/lib/types"
-import { Button } from "@/components/ui/button"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { cn } from "@/lib/utils"
+import {
+  Bell,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle,
+  RefreshCcw,
+  Trash2,
+} from "lucide-react";
+import type { Notification, SystemEvent } from "@/lib/types";
+import { Button } from "@/components/ui/button";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
 
-const eventMeta: Record<SystemEvent, { label: string; icon: typeof Bell; className: string; dot: string }> = {
+const eventMeta: Record<
+  SystemEvent,
+  { label: string; icon: typeof Bell; className: string; dot: string }
+> = {
   ORDER_CREATED: {
     label: "Comandă creată",
     icon: CheckCircle2,
@@ -32,26 +46,33 @@ const eventMeta: Record<SystemEvent, { label: string; icon: typeof Bell; classNa
     className: "text-sky-500 bg-sky-500/10",
     dot: "bg-sky-500",
   },
-}
+};
 
 function formatTimestamp(iso: string) {
-  const date = new Date(iso)
+  const date = new Date(iso);
   return new Intl.DateTimeFormat("ro-RO", {
     day: "2-digit",
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
-  }).format(date)
+  }).format(date);
 }
 
 type NotificationsBellProps = {
-  notifications: Notification[]
-  unreadCount: number
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}
+  notifications: Notification[];
+  unreadCount: number;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onClear?: () => void; // <-- callback pentru ștergere
+};
 
-export function NotificationsBell({ notifications, unreadCount, open, onOpenChange }: NotificationsBellProps) {
+export function NotificationsBell({
+  notifications,
+  unreadCount,
+  open,
+  onOpenChange,
+  onClear,
+}: NotificationsBellProps) {
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger
@@ -90,13 +111,18 @@ export function NotificationsBell({ notifications, unreadCount, open, onOpenChan
         <ScrollArea className="h-[min(60vh,26rem)]">
           <ol className="divide-y divide-border">
             {notifications.length === 0 && (
-              <li className="px-4 py-10 text-center text-sm text-muted-foreground">Nicio notificare momentan.</li>
+              <li className="px-4 py-10 text-center text-sm text-muted-foreground">
+                Nicio notificare momentan.
+              </li>
             )}
             {notifications.map((n) => {
-              const meta = eventMeta[n.event]
-              const Icon = meta.icon
+              const meta = eventMeta[n.event];
+              const Icon = meta.icon;
               return (
-                <li key={n.id} className="flex gap-3 px-4 py-3 transition-colors hover:bg-muted/50">
+                <li
+                  key={n.id}
+                  className="flex gap-3 px-4 py-3 transition-colors hover:bg-muted/50"
+                >
                   <span
                     className={cn(
                       "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full",
@@ -107,17 +133,38 @@ export function NotificationsBell({ notifications, unreadCount, open, onOpenChan
                   </span>
                   <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold">{meta.label}</span>
-                      <span className="text-[11px] text-muted-foreground">{formatTimestamp(n.timestamp)}</span>
+                      <span className="text-xs font-semibold">
+                        {meta.label}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">
+                        {formatTimestamp(n.timestamp)}
+                      </span>
                     </div>
-                    <p className="text-pretty text-sm leading-relaxed text-muted-foreground">{n.message}</p>
+                    <p className="text-pretty text-sm leading-relaxed text-muted-foreground">
+                      {n.message}
+                    </p>
                   </div>
                 </li>
-              )
+              );
             })}
           </ol>
         </ScrollArea>
+
+        {/* Butonul de ștergere */}
+        {onClear && notifications.length > 0 && (
+          <div className="border-t border-border p-2 flex justify-end">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onClear}
+              className="text-xs text-muted-foreground hover:text-destructive"
+            >
+              <Trash2 className="mr-1 size-3" />
+              Șterge toate
+            </Button>
+          </div>
+        )}
       </PopoverContent>
     </Popover>
-  )
+  );
 }

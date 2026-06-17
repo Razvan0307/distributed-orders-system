@@ -1,10 +1,11 @@
 import os
 import requests
 from flask import Flask, jsonify, request, Response
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app)
 
-# URL-urile interne preluate din Kubernetes via ConfigMap
 ORDER_SERVICE_URL = os.environ.get("ORDER_SERVICE_URL", "http://order-service:5000")
 PRODUCT_SERVICE_URL = os.environ.get("PRODUCT_SERVICE_URL", "http://product-service:5000")
 NOTIFICATION_SERVICE_URL = os.environ.get("NOTIFICATION_SERVICE_URL", "http://notification-service:5000")
@@ -23,11 +24,7 @@ def index():
     }), 200
 
 def proxy(target_base, service_name, subpath):
-    """Asambleaza corect URL-ul si forwardeaza cererea."""
-    # Exemplu: target_base (http://product-service:5000) + / + service_name (products)
     target_url = f"{target_base}/{service_name}"
-    
-    # Daca exista un ID (ex: /api/products/1), il adaugam la final
     if subpath:
         target_url = f"{target_url}/{subpath}"
 
@@ -47,7 +44,6 @@ def proxy(target_base, service_name, subpath):
             "details": str(exc),
         }), 503
 
-    # Curatam header-ele incompatibile de la nivel de server
     excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection']
     headers = [(name, value) for (name, value) in resp.headers.items() if name.lower() not in excluded_headers]
 
@@ -57,7 +53,6 @@ def proxy(target_base, service_name, subpath):
         headers=headers
     )
 
-# Captam toate rutele care incep cu /api/
 @app.route("/api/<service>", methods=["GET", "POST", "PUT", "DELETE"], strict_slashes=False)
 @app.route("/api/<service>/<path:subpath>", methods=["GET", "POST", "PUT", "DELETE"])
 def gateway(service, subpath=""):

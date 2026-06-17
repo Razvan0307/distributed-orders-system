@@ -101,6 +101,47 @@ def add_product():
 
 
 # ---------------------------------------------------------------------------
+# PUT /products/<id> - actualizeaza un produs existent
+# Body JSON (partial): { "name": str, "price": float, "stock": int }
+# ---------------------------------------------------------------------------
+@app.route("/products/<int:product_id>", methods=["PUT"])
+def update_product(product_id):
+    product = products.get(product_id)
+    if not product:
+        return jsonify({"error": "Produsul nu a fost gasit"}), 404
+
+    data = request.get_json(silent=True)
+    if data:
+        if "name" in data:
+            product["name"] = str(data["name"])
+        if "price" in data:
+            try:
+                product["price"] = float(data["price"])
+            except (TypeError, ValueError):
+                return jsonify({"error": "price trebuie sa fie numeric"}), 400
+        if "stock" in data:
+            try:
+                product["stock"] = int(data["stock"])
+            except (TypeError, ValueError):
+                return jsonify({"error": "stock trebuie sa fie intreg"}), 400
+
+    return jsonify(product), 200
+
+
+# ---------------------------------------------------------------------------
+# DELETE /products/<id> - sterge un produs
+# ---------------------------------------------------------------------------
+@app.route("/products/<int:product_id>", methods=["DELETE"])
+def delete_product(product_id):
+    global products
+    if product_id not in products:
+        return jsonify({"error": "Produsul nu a fost gasit"}), 404
+
+    del products[product_id]
+    return jsonify({"message": f"Produsul {product_id} a fost sters"}), 200
+
+
+# ---------------------------------------------------------------------------
 # POST /products/<id>/reduce-stock - endpoint INTERN, apelat de order-service
 # atunci cand se confirma o comanda. Body JSON: { "quantity": int }
 # ---------------------------------------------------------------------------

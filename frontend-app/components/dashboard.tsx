@@ -1,92 +1,99 @@
 "use client";
 
-import { useState } from "react";
-import { PackageSearch, Boxes, AlertTriangle, Plus } from "lucide-react";
-import type { Product, Notification, OrderPayload } from "@/lib/types";
-import { initialProducts, initialNotifications } from "@/lib/mock-data";
+import { useState, useEffect, useCallback } from "react";
+import {
+  PackageSearch,
+  Boxes,
+  AlertTriangle,
+  Plus,
+  ClipboardList,
+} from "lucide-react";
+import type { Product, OrderPayload } from "@/lib/types";
 import { ProductCard } from "@/components/product-card";
 import { OrderDialog } from "@/components/order-dialog";
 import { EditStockDialog } from "@/components/edit-stock-dialog";
 import { AddProductDialog } from "@/components/add-product-dialog";
+import { OrdersHistoryDialog } from "@/components/orders-history-dialog"; // <-- NOU
 import { Button } from "@/components/ui/button";
+import { API_BASE_URL } from "@/lib/config";
+import { useNotifications } from "@/components/ui/notifications-context";
 
 type DashboardProps = {
   isAdmin: boolean;
 };
 
 export function Dashboard({ isAdmin }: DashboardProps) {
-  const [products, setProducts] = useState<Product[]>(initialProducts);
-  const [notifications, setNotifications] =
-    useState<Notification[]>(initialNotifications);
+  const [products, setProducts] = useState<Product[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Istoric comenzi – stocăm doar dacă e deschis dialogul
+  const [ordersOpen, setOrdersOpen] = useState(false);
+
+  const { refreshNotifications } = useNotifications();
 
   const lowStock = products.filter((p) => p.stock > 0 && p.stock < 5).length;
   const outOfStock = products.filter((p) => p.stock === 0).length;
 
-  const addNotification = (notification: Omit<Notification, "id">) => {
-    setNotifications((prev) => [
-      {
-        ...notification,
-        id: prev.length ? Math.max(...prev.map((n) => n.id)) + 1 : 1,
-      },
-      ...prev,
-    ]);
-    setUnreadCount((c) => c + 1);
-  };
+  const fetchProducts = useCallback(async () => {
+    const res = await fetch(`${API_BASE_URL}/api/products`);
+    if (!res.ok) throw new Error(`Eroare ${res.status}`);
+    const data = await res.json();
+    setProducts(data);
+  }, []);
+
+  // La încărcare, luăm produsele + notificările
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setLoading(true);
+        await Promise.all([fetchProducts(), refreshNotifications()]);
+        setError(null);
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [fetchProducts, refreshNotifications]);
 
   const handleBuy = (product: Product) => {
     setSelectedProduct(product);
     setDialogOpen(true);
   };
 
-  const handleSubmitOrder = (payload: OrderPayload) => {
-    const product = products.find((p) => p.id === payload.product_id);
-    if (!product) return;
-
-    // Simulate sending the order to the orders microservice
-    console.log("[v0] Order submitted:", payload);
-
-    setProducts((prev) =>
-      prev.map((p) =>
-        p.id === payload.product_id
-          ? { ...p, stock: p.stock - payload.quantity }
-          : p,
-      ),
-    );
-
-    addNotification({
-      event: "ORDER_CREATED",
-      message: `Comandă nouă de la ${payload.customer_name} pentru ${payload.quantity}x ${product.name}`,
-      timestamp: new Date().toISOString(),
-    });
-
-    setDialogOpen(false);
-  };
-
-  const handleRefresh = () => {
-    setIsRefreshing(true);
-    // Simulate fetching new data from the API Gateway
-    console.log("[v0] Refreshing data from API Gateway…");
-    setTimeout(() => {
-      addNotification({
-        event: "SYSTEM_SYNC",
-        message: "API Gateway sincronizat · catalog și inventar actualizate",
-        timestamp: new Date().toISOString(),
+  const handleSubmitOrder = async (payload: OrderPayload) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/orders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       });
-      setIsRefreshing(false);
-    }, 900);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Eroare ${res.status}`);
+      }
+      await Promise.all([fetchProducts(), refreshNotifications()]);
+      setDialogOpen(false);
+    } catch (err: any) {
+      alert(err.message);
+    }
   };
 
-  const handleNotificationsOpenChange = (open: boolean) => {
-    setNotificationsOpen(open);
-    if (open) setUnreadCount(0);
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([fetchProducts(), refreshNotifications()]);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   const handleEditStock = (product: Product) => {
@@ -94,60 +101,98 @@ export function Dashboard({ isAdmin }: DashboardProps) {
     setEditOpen(true);
   };
 
-  const handleStockSaved = (updated: Product) => {
-    console.log("[v0] Stock updated:", updated);
-    setProducts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
-    addNotification({
-      event: "SYSTEM_SYNC",
-      message: `Stoc actualizat pentru ${updated.name} · ${updated.stock} unități`,
-      timestamp: new Date().toISOString(),
-    });
-  };
-
-  const handleDelete = async (product: Product) => {
-    console.log("[v0] Deleting product:", product.id);
+  const handleStockSaved = async (updated: Product) => {
     try {
-      const res = await fetch(`/api/products/${product.id}`, {
-        method: "DELETE",
+      const res = await fetch(`${API_BASE_URL}/api/products/${updated.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: updated.name,
+          price: updated.price,
+          stock: updated.stock,
+        }),
       });
-      if (!res.ok) {
-        console.log("[v0] Delete failed:", res.status);
-        return;
-      }
-      setProducts((prev) => prev.filter((p) => p.id !== product.id));
-      addNotification({
-        event: "STOCK_OUT",
-        message: `Produs eliminat din catalog · ${product.name}`,
-        timestamp: new Date().toISOString(),
-      });
-    } catch (error) {
-      console.log("[v0] Delete error:", error);
+      if (!res.ok) throw new Error(`Eroare ${res.status}`);
+      await Promise.all([fetchProducts(), refreshNotifications()]);
+    } catch (err: any) {
+      alert(err.message);
     }
   };
 
-  const handleProductCreated = (product: Product) => {
-    console.log("[v0] Product created:", product);
-    setProducts((prev) => [...prev, product]);
-    addNotification({
-      event: "SYSTEM_SYNC",
-      message: `Produs nou adăugat în catalog · ${product.name}`,
-      timestamp: new Date().toISOString(),
-    });
+  const handleDelete = async (product: Product) => {
+    if (!confirm(`Ștergi ${product.name}?`)) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/products/${product.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error(`Eroare ${res.status}`);
+      await Promise.all([fetchProducts(), refreshNotifications()]);
+    } catch (err: any) {
+      alert(err.message);
+    }
   };
+
+  const handleProductCreated = async (product: Product) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/products`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(product),
+      });
+      if (!res.ok) throw new Error(`Eroare ${res.status}`);
+      await Promise.all([fetchProducts(), refreshNotifications()]);
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <p className="text-muted-foreground">Se încarcă datele...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4">
+        <p className="text-destructive">Eroare: {error}</p>
+        <Button onClick={() => window.location.reload()} variant="outline">
+          Reîncearcă
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
       <main className="mx-auto max-w-7xl px-4 py-8 md:px-6">
         <div className="mb-8 flex flex-col gap-6">
-          <div className="space-y-1">
-            <p className="text-sm font-medium text-brand">Catalog Distribuit</p>
-            <h1 className="text-balance text-2xl font-bold tracking-tight md:text-3xl">
-              Gestionează comenzile în timp real
-            </h1>
-            <p className="max-w-xl text-pretty text-sm text-muted-foreground">
-              Plasează comenzi către serviciul de comenzi și urmărește
-              evenimentele sistemului direct din clopoțelul de notificări.
-            </p>
+          {/* Titlu + buton istoric (admin) */}
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-brand">
+                Catalog Distribuit
+              </p>
+              <h1 className="text-balance text-2xl font-bold tracking-tight md:text-3xl">
+                Gestionează comenzile în timp real
+              </h1>
+              <p className="max-w-xl text-pretty text-sm text-muted-foreground">
+                Plasează comenzi către serviciul de comenzi și urmărește
+                evenimentele sistemului direct din clopoțelul de notificări.
+              </p>
+            </div>
+            {isAdmin && (
+              <Button
+                variant="outline"
+                onClick={() => setOrdersOpen(true)}
+                className="gap-2 shrink-0"
+              >
+                <ClipboardList className="size-4" />
+                <span className="hidden sm:inline">Istoric comenzi</span>
+              </Button>
+            )}
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -186,6 +231,7 @@ export function Dashboard({ isAdmin }: DashboardProps) {
         </div>
       </main>
 
+      {/* Dialog comandă nouă */}
       <OrderDialog
         product={selectedProduct}
         open={dialogOpen}
@@ -193,6 +239,7 @@ export function Dashboard({ isAdmin }: DashboardProps) {
         onSubmit={handleSubmitOrder}
       />
 
+      {/* Dialog editare stoc */}
       <EditStockDialog
         product={editProduct}
         open={editOpen}
@@ -200,12 +247,17 @@ export function Dashboard({ isAdmin }: DashboardProps) {
         onSaved={handleStockSaved}
       />
 
+      {/* Dialog adăugare produs */}
       <AddProductDialog
         open={addOpen}
         onOpenChange={setAddOpen}
         onCreated={handleProductCreated}
       />
 
+      {/* Dialog istoric comenzi (admin) – componenta modernă */}
+      <OrdersHistoryDialog open={ordersOpen} onOpenChange={setOrdersOpen} />
+
+      {/* Buton plutitor Adaugă produs (doar admin) */}
       {isAdmin && (
         <Button
           onClick={() => setAddOpen(true)}
